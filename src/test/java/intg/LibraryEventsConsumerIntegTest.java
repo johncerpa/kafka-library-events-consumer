@@ -3,8 +3,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.learnkafka.consumer.LibraryEventsConsumer;
 import com.learnkafka.entity.Book;
 import com.learnkafka.entity.LibraryEvent;
+import com.learnkafka.jpa.LibraryEventsRepository;
 import com.learnkafka.service.LibraryEventsService;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,10 +21,12 @@ import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.kafka.test.utils.ContainerTestUtils;
 import org.springframework.test.context.TestPropertySource;
 
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -46,6 +50,9 @@ public class LibraryEventsConsumerIntegTest {
     @Autowired
     ObjectMapper objectMapper;
 
+    @Autowired
+    LibraryEventsRepository libraryEventsRepository;
+
     @SpyBean
     LibraryEventsConsumer libraryEventsConsumerSpy;
 
@@ -57,6 +64,11 @@ public class LibraryEventsConsumerIntegTest {
         for (MessageListenerContainer messageListenerContainer : endpointRegistry.getListenerContainers()) {
             ContainerTestUtils.waitForAssignment(messageListenerContainer, embeddedKafkaBroker.getPartitionsPerTopic());
         }
+    }
+
+    @AfterEach
+    void tearDown() {
+        libraryEventsRepository.deleteAll();
     }
 
     @Test
@@ -85,5 +97,12 @@ public class LibraryEventsConsumerIntegTest {
         // Then
         verify(libraryEventsConsumerSpy, times(1)).onMessage(isA(ConsumerRecord.class));
         verify(libraryEventsServiceSpy, times(1)).processLibraryEvent(isA(ConsumerRecord.class));
+
+        List<LibraryEvent> libraryEventList = (List<LibraryEvent>) libraryEventsRepository.findAll();
+        assert libraryEventList.size() == 1;
+        libraryEventList.forEach(le -> {
+            assert le.getLibraryEventId() != null;
+            assertEquals(1, le.getBook().getBookId());
+        });
     }
 }
